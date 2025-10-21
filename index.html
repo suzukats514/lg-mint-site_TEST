@@ -1,0 +1,367 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>LGでNFTをミント（自動フロー + RPCフェイルオーバー）</title>
+  <style>
+    :root { color-scheme: dark; }
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:#0b0e14;color:#e6e9ef;margin:0;padding:24px}
+    h1{margin:0 0 16px}
+    .card{max-width:880px;margin:0 auto;background:#111827;border:1px solid #223; border-radius:12px;padding:20px;box-shadow:0 10px 24px rgba(0,0,0,.25)}
+    .row{display:flex; gap:12px; align-items:center; flex-wrap:wrap}
+    input,button,select{background:#0f172a;border:1px solid #334; color:#e6e9ef;border-radius:8px; padding:10px 12px; font-size:14px}
+    input{min-width:180px}
+    button{cursor:pointer}
+    button.primary{background:#2563eb;border-color:#2563eb}
+    button.ghost{background:#0f172a}
+    .muted{opacity:.75}
+    #log{background:#0a0f1f;border:1px solid #203; border-radius:8px; padding:12px; font-family:ui-monospace,Menlo,Consolas,monospace; line-height:1.5; white-space:pre-wrap; min-height:180px}
+    .grid{display:grid; grid-template-columns: 1fr 1fr; gap:12px}
+    .pill{display:inline-flex; gap:8px; align-items:center; padding:6px 10px; background:#0a1428; border:1px solid #234; border-radius:999px; font-size:12px}
+    .ok{color:#22c55e} .ng{color:#f43f5e} .warn{color:#f59e0b}
+    .sep{height:1px; background:#222; margin:16px 0}
+    a{color:#7dd3fc}
+  </style>
+</head>
+<body>
+  <div class="card">
+     <h1>Life is a Game</h1>
+    <h1>LG で テストNFT 購入</h1>
+    <div class="row">
+      <button id="btnConnect" class="primary">① ウォレット接続</button>
+      <span id="addr" class="pill muted">未接続</span>
+      <span id="net" class="pill muted">Network: -</span>
+    </div>
+
+    <div class="sep"></div>
+
+    <div class="grid">
+      <label>購入数量 (qty)
+        <input id="qty" type="number" min="1" value="1" />
+      </label>
+      <label>必要LG（自動計算）
+        <input id="need" type="text" readonly value="-" />
+      </label>
+      <label>Allowance（現在値）
+        <input id="allow" type="text" readonly value="-" />
+      </label>
+      <label>残高（LG）
+        <input id="balance" type="text" readonly value="-" />
+      </label>
+    </div>
+
+    <div class="sep"></div>
+
+    <div class="row">
+      <button id="btnAuto" class="primary">② 購入（allowance→approve→buy）</button>
+      <button id="btnApproveOnly" class="ghost">approveのみ</button>
+      <button id="btnBuyOnly" class="ghost">buyのみ</button>
+      <button id="btnRefresh" class="ghost">情報更新</button>
+    </div>
+
+    <div class="sep"></div>
+
+    <div class="row"><strong>ログ</strong><span class="muted">(RPCフェイルオーバー＆リトライ入り)</span></div>
+    <div id="log"></div>
+
+    <p class="muted" style="margin-top:10px">
+      うまくいかない時はリロード（F5）→ ①接続 → ②自動購入。<br/>
+      フォールバックの approve / buy ボタンも最後の手段として用意しています。
+    </p>
+  </div>
+
+  <!-- Ethers v6 -->
+  <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.2/dist/ethers.umd.min.js"></script>
+<!-- もしCDNがブロックされる場合はこっち -->
+<!-- <script src="https://unpkg.com/ethers@6.13.2/dist/ethers.umd.min.js"></script> -->
+  <script type="module">
+    const { BrowserProvider, JsonRpcProvider, Contract, formatUnits, parseUnits, toNumber } = ethers;
+
+    /**********************
+     * ★ ここを書き換える
+     **********************/
+    // Polygon Amoy (chainId 80002)
+    const CHAIN_ID = 80002;
+    const CHAIN_PARAMS = {
+      chainId: '0x13882', // 80002
+      chainName: 'Polygon Amoy',
+      nativeCurrency: { name: 'MATIC', symbol: 'POL', decimals: 18 },
+      rpcUrls: [
+        // ★ あなたの Alchemy URL を先頭に
+        'https://polygon-amoy.g.alchemy.com/v2/wf89gpuUltz8_F74z0hoB', 
+        'https://rpc-amoy.polygon.technology',
+        'https://rpc.ankr.com/polygon_amoy',
+      ],
+      blockExplorerUrls: ['https://amoy.polygonscan.com']
+    };
+
+    // ★ あなたのコントラクト
+    const SALE_ADDRESS   = '0x4CD52DC71DaeB382cD736eCd2d9a821192A914dE'; // PlayerSaleERC20_MintLevel1
+    const TOKEN_ADDRESS  = '0xf5E7662fD4031Eb4Dad19DA8961E01A5d9F90F46'; // LG(ERC20)
+    const DECIMALS       = 18;  // LG の decimals（18が一般的）
+
+    /**********************
+     * ABI（最小限）
+     **********************/
+    const ERC20_ABI = [
+      'function decimals() view returns (uint8)',
+      'function allowance(address owner, address spender) view returns (uint256)',
+      'function balanceOf(address account) view returns (uint256)',
+      'function approve(address spender, uint256 amount) returns (bool)'
+    ];
+    const SALE_ABI = [
+      'function price() view returns (uint256)',
+      'function payToken() view returns (address)',
+      'function treasury() view returns (address)',
+      'function paused() view returns (bool)',
+      'function buyQty(uint256 qty)'
+    ];
+
+    /**********************
+     * UI 要素
+     **********************/
+    const $log = document.querySelector('#log');
+    const $addr = document.querySelector('#addr');
+    const $net  = document.querySelector('#net');
+    const $qty  = document.querySelector('#qty');
+    const $need = document.querySelector('#need');
+    const $allow = document.querySelector('#allow');
+    const $balance = document.querySelector('#balance');
+
+    const btnConnect = document.querySelector('#btnConnect');
+    const btnAuto = document.querySelector('#btnAuto');
+    const btnApproveOnly = document.querySelector('#btnApproveOnly');
+    const btnBuyOnly = document.querySelector('#btnBuyOnly');
+    const btnRefresh = document.querySelector('#btnRefresh');
+
+    /**********************
+     * ログ
+     **********************/
+    function log(line, cls='') {
+      const t = new Date().toLocaleTimeString();
+      const tag = cls ? `<span class="${cls}">${line}</span>` : line;
+      $log.innerHTML += `[${t}] ${tag}\n`;
+      $log.scrollTop = $log.scrollHeight;
+      console.debug(line);
+    }
+
+    /**********************
+     * 読み取り用 Multi-RPC
+     **********************/
+    const readProviders = CHAIN_PARAMS.rpcUrls.map(u => new JsonRpcProvider(u, CHAIN_ID));
+
+    async function withProviders(fn, label='read', maxRetry=3) {
+      let lastErr;
+      for (let r=0; r<maxRetry; r++) {
+        for (const [i,p] of readProviders.entries()) {
+          try {
+            if (r>0 || i>0) log(`Retrying ${label} via RPC#${i+1}`, 'warn');
+            return await fn(p);
+          } catch (e) {
+            lastErr = e;
+            log(`${label} failed on RPC#${i+1}: ${e.message||e}`, 'ng');
+          }
+        }
+        await new Promise(res => setTimeout(res, 800 * (r+1)));
+      }
+      throw lastErr;
+    }
+
+    /**********************
+     * ウォレット接続/チェーン確認
+     **********************/
+    let browserProvider, signer, userAddress;
+
+    async function ensureWallet() {
+      if (!window.ethereum) {
+        alert('MetaMask等のウォレットをインストールしてください。');
+        throw new Error('no wallet');
+      }
+      // chain
+      const chainIdHex = (await window.ethereum.request({ method: 'eth_chainId' }));
+      if (parseInt(chainIdHex, 16) !== CHAIN_ID) {
+        try {
+          await window.ethereum.request({
+            method: 'wallet_switchEthereumChain',
+            params: [{ chainId: CHAIN_PARAMS.chainId }]
+          });
+        } catch (e) {
+          if (e.code === 4902) {
+            await window.ethereum.request({
+              method: 'wallet_addEthereumChain',
+              params: [CHAIN_PARAMS]
+            });
+          } else throw e;
+        }
+      }
+      // connect
+      browserProvider = new BrowserProvider(window.ethereum);
+      signer = await browserProvider.getSigner();
+      userAddress = await signer.getAddress();
+
+      $addr.textContent = userAddress;
+      $addr.classList.remove('muted');
+      $net.textContent = 'Network: Polygon Amoy';
+      $net.classList.remove('muted');
+
+      log(`Connected: ${userAddress}`, 'ok');
+    }
+
+    /**********************
+     * コントラクト helpers
+     **********************/
+    function saleRead(p) { return new Contract(SALE_ADDRESS, SALE_ABI, p); }
+    function tokenRead(p){ return new Contract(TOKEN_ADDRESS, ERC20_ABI, p); }
+    function saleWrite() { return new Contract(SALE_ADDRESS, SALE_ABI, signer); }
+    function tokenWrite(){ return new Contract(TOKEN_ADDRESS, ERC20_ABI, signer); }
+
+    async function fetchPrice() {
+      const price = await withProviders(async (p) => {
+        const c = saleRead(p);
+        return await c.price();
+      }, 'price()');
+      return price; // BigInt
+    }
+    async function fetchAllowance(owner, spender) {
+      const val = await withProviders(async (p) => {
+        return await tokenRead(p).allowance(owner, spender);
+      }, 'allowance()');
+      return val;
+    }
+    async function fetchBalance(owner) {
+      const val = await withProviders(async (p) => {
+        return await tokenRead(p).balanceOf(owner);
+      }, 'balanceOf()');
+      return val;
+    }
+    async function fetchPaused() {
+      return await withProviders(async (p) => saleRead(p).paused(), 'paused()');
+    }
+
+    /**********************
+     * 画面に値反映
+     **********************/
+    async function refreshUI() {
+      try {
+        const qty = Math.max(1, parseInt($qty.value || '1', 10));
+        const [price, allowance, balance, paused] = await Promise.all([
+          fetchPrice(),
+          userAddress ? fetchAllowance(userAddress, SALE_ADDRESS) : 0n,
+          userAddress ? fetchBalance(userAddress) : 0n,
+          fetchPaused()
+        ]);
+        const need = price * BigInt(qty);
+
+        $need.value    = `${formatUnits(need, DECIMALS)} LG`;
+        $allow.value   = userAddress ? `${formatUnits(allowance, DECIMALS)} LG` : '-';
+        $balance.value = userAddress ? `${formatUnits(balance, DECIMALS)} LG` : '-';
+
+        log(`price=${formatUnits(price, DECIMALS)} LG / qty=${qty} / need=${formatUnits(need, DECIMALS)} LG`);
+        if (paused) log('販売コントラクトは一時停止中です（paused=true）', 'warn');
+      } catch(e) {
+        log(`refreshUI error: ${e.message||e}`, 'ng');
+      }
+    }
+
+    /**********************
+     * Approve → Buy 自動
+     **********************/
+    async function autoBuy() {
+      try {
+        await ensureWallet();
+        await refreshUI();
+
+        const qty = Math.max(1, parseInt($qty.value || '1', 10));
+        const price = await fetchPrice();
+        const need  = price * BigInt(qty);
+
+        // allowance 確認
+        let allowance = await fetchAllowance(userAddress, SALE_ADDRESS);
+        log(`current allowance=${formatUnits(allowance, DECIMALS)} LG`);
+        if (allowance < need) {
+          const missing = need - allowance;
+          log(`approve required: ${formatUnits(missing, DECIMALS)} LG`, 'warn');
+          const tx = await tokenWrite().approve(SALE_ADDRESS, missing);
+          log(`approve tx sent: ${tx.hash}`);
+          const receipt = await tx.wait(1);
+          log(`approve confirmed in block ${receipt.blockNumber}`, 'ok');
+          // 反映待ち
+          await new Promise(res => setTimeout(res, 1200));
+          allowance = await fetchAllowance(userAddress, SALE_ADDRESS);
+          log(`allowance updated: ${formatUnits(allowance, DECIMALS)} LG`);
+          if (allowance < need) throw new Error('allowanceが必要額に達していません');
+        } else {
+          log('approveは不要です', 'ok');
+        }
+
+        // buy 実行
+        log('sending buyQty...');
+        const tx2 = await saleWrite().buyQty(qty);
+        log(`buy tx sent: ${tx2.hash}`);
+        const receipt2 = await tx2.wait(1);
+        log(`buy confirmed in block ${receipt2.blockNumber}`, 'ok');
+
+        await refreshUI();
+        alert('購入完了！ウォレット内のNFTをご確認ください。');
+      } catch(e) {
+        const msg = (e?.info?.error?.message) || e?.shortMessage || e?.message || String(e);
+        if (msg.toLowerCase().includes('user rejected')) {
+          log('ユーザーが署名を拒否しました。', 'warn');
+        } else if (msg.toLowerCase().includes('insufficient funds')) {
+          log('ガス/トークン残高不足です。', 'ng');
+        } else if (msg.toLowerCase().includes('timeout') || msg.toLowerCase().includes('network')) {
+          log(`ネットワークの一時的な不調です。時間をおいて再試行してください。detail: ${msg}`, 'ng');
+        } else {
+          log(`autoBuy error: ${msg}`, 'ng');
+        }
+      }
+    }
+
+    /**********************
+     * フォールバック（個別）
+     **********************/
+    async function approveOnly() {
+      try {
+        await ensureWallet();
+        const qty = Math.max(1, parseInt($qty.value || '1', 10));
+        const need = (await fetchPrice()) * BigInt(qty);
+        const allowance = await fetchAllowance(userAddress, SALE_ADDRESS);
+        const missing = allowance >= need ? 0n : (need - allowance);
+        if (missing === 0n) {
+          log('approveは不要です', 'ok'); return;
+        }
+        const tx = await tokenWrite().approve(SALE_ADDRESS, missing);
+        log(`approve tx: ${tx.hash}`);
+        await tx.wait(1);
+        log('approve confirmed', 'ok');
+        await refreshUI();
+      } catch (e) { log(`approveOnly error: ${e.message||e}`, 'ng'); }
+    }
+    async function buyOnly() {
+      try {
+        await ensureWallet();
+        const qty = Math.max(1, parseInt($qty.value || '1', 10));
+        const tx = await saleWrite().buyQty(qty);
+        log(`buy tx: ${tx.hash}`);
+        await tx.wait(1);
+        log('buy confirmed', 'ok');
+        await refreshUI();
+      } catch (e) { log(`buyOnly error: ${e.message||e}`, 'ng'); }
+    }
+
+    /**********************
+     * イベント
+     **********************/
+    btnConnect.onclick = async () => { await ensureWallet(); await refreshUI(); };
+    btnRefresh.onclick = refreshUI;
+    btnAuto.onclick = autoBuy;
+    btnApproveOnly.onclick = approveOnly;
+    btnBuyOnly.onclick = buyOnly;
+    $qty.oninput = () => refreshUI();
+
+    // 初期：読み取りだけ先に（価格等）
+    refreshUI();
+  </script>
+</body>
+</html>
