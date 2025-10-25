@@ -6,83 +6,140 @@
   <title>LGでNFTをミント（自動フロー + RPCフェイルオーバー）</title>
   <style>
     :root { color-scheme: dark; }
-    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:#0b0e14;color:#e6e9ef;margin:0;padding:24px}
+    body{
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+      background:#0b0e14;
+      color:#e6e9ef;
+      margin:0;
+      padding:24px;
+    }
     h1{margin:0 0 16px}
-    .card{max-width:880px;margin:0 auto;background:#111827;border:1px solid #223; border-radius:12px;padding:20px;box-shadow:0 10px 24px rgba(0,0,0,.25)}
-    .row{display:flex; gap:12px; align-items:center; flex-wrap:wrap}
-    input,button,select{background:#0f172a;border:1px solid #334; color:#e6e9ef;border-radius:8px; padding:10px 12px; font-size:14px}
+    .card{
+      max-width:880px;
+      margin:0 auto;
+      background:#111827;
+      border:1px solid #223;
+      border-radius:12px;
+      padding:20px;
+      box-shadow:0 10px 24px rgba(0,0,0,.25)
+    }
+    .row{
+      display:flex;
+      gap:12px;
+      align-items:center;
+      flex-wrap:wrap
+    }
+    input,button,select{
+      background:#0f172a;
+      border:1px solid #334;
+      color:#e6e9ef;
+      border-radius:8px;
+      padding:10px 12px;
+      font-size:14px
+    }
     input{min-width:180px}
     button{cursor:pointer}
     button.primary{background:#2563eb;border-color:#2563eb}
     button.ghost{background:#0f172a}
     .muted{opacity:.75}
-    #log{background:#0a0f1f;border:1px solid #203; border-radius:8px; padding:12px; font-family:ui-monospace,Menlo,Consolas,monospace; line-height:1.5; white-space:pre-wrap; min-height:180px}
-    .grid{display:grid; grid-template-columns: 1fr 1fr; gap:12px}
-    .pill{display:inline-flex; gap:8px; align-items:center; padding:6px 10px; background:#0a1428; border:1px solid #234; border-radius:999px; font-size:12px}
-    .ok{color:#22c55e} .ng{color:#f43f5e} .warn{color:#f59e0b}
-    .sep{height:1px; background:#222; margin:16px 0}
+    #log{
+      background:#0a0f1f;
+      border:1px solid #203;
+      border-radius:8px;
+      padding:12px;
+      font-family:ui-monospace,Menlo,Consolas,monospace;
+      line-height:1.5;
+      white-space:pre-wrap;
+      min-height:180px
+    }
+    .grid{
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:12px
+    }
+    .pill{
+      display:inline-flex;
+      gap:8px;
+      align-items:center;
+      padding:6px 10px;
+      background:#0a1428;
+      border:1px solid #234;
+      border-radius:999px;
+      font-size:12px
+    }
+    .ok{color:#22c55e}
+    .ng{color:#f43f5e}
+    .warn{color:#f59e0b}
+    .sep{height:1px;background:#222;margin:16px 0}
     a{color:#7dd3fc}
+
     /* ---- モバイル最適化 ---- */
-@media (max-width: 480px) {
-  .card {
-    padding:16px;
-    border-radius:10px;
-  }
+    @media (max-width:768px){
+      body{
+        padding:16px;
+      }
+      .card{
+        padding:16px;
+        border-radius:10px;
+      }
 
-  .row {
-    flex-direction: column;
-    align-items: stretch;
-    gap:8px;
-  }
+      /* 上や下のrowを縦積みにする */
+      .row{
+        flex-direction:column;
+        align-items:stretch;
+        gap:8px;
+      }
 
-  .row button {
-    width:100%;
-    text-align:center;
-  }
+      .row button{
+        width:100%;
+        text-align:center;
+      }
 
-  .pill {
-    width:100%;
-    justify-content:center;
-    font-size:12px;
-    padding:6px 8px;
-    text-align:center;
-  }
+      .pill{
+        width:100%;
+        justify-content:center;
+        font-size:12px;
+        padding:6px 8px;
+        text-align:center;
+      }
 
-  .grid {
-    grid-template-columns: 1fr; /* 2列→1列に */
-    gap:10px;
-  }
+      /* 入力系を1カラムにする */
+      .grid{
+        grid-template-columns:1fr;
+        gap:10px;
+      }
 
-  label {
-    display:block;
-    font-size:14px;
-  }
+      label{
+        display:block;
+        font-size:14px;
+      }
 
-  input {
-    width:100%;
-    min-width:0;
-    font-size:16px; /* スマホでタップしやすいように */
-  }
+      input{
+        width:100%;
+        min-width:0;
+        font-size:16px; /* タップしやすい */
+      }
 
-  #log {
-    min-height:140px;
-    font-size:12px;
-  }
+      button.primary,
+      button.ghost{
+        font-size:14px;
+        padding:12px;
+        width:100%;
+      }
 
-  button.primary,
-  button.ghost {
-    font-size:14px;
-    padding:12px;
-  }
-}
-
+      #log{
+        min-height:140px;
+        font-size:12px;
+      }
+    }
   </style>
 </head>
 <body>
   <div class="card">
-     <h1>Life is a Game</h1>
+    <h1>Life is a Game</h1>
     <h1>LG で テストNFT 購入</h1>
-    <h1>rev2.0</h1>
+    <h1>rev3.0</h1>
+
     <div class="row">
       <button id="btnConnect" class="primary">① ウォレット接続</button>
       <span id="addr" class="pill muted">未接続</span>
@@ -117,7 +174,10 @@
 
     <div class="sep"></div>
 
-    <div class="row"><strong>ログ</strong><span class="muted">(RPCフェイルオーバー＆リトライ入り)</span></div>
+    <div class="row">
+      <strong>ログ</strong>
+      <span class="muted">(RPCフェイルオーバー＆リトライ入り)</span>
+    </div>
     <div id="log"></div>
 
     <p class="muted" style="margin-top:10px">
@@ -143,10 +203,9 @@
       chainName: 'Polygon Amoy',
       nativeCurrency: { name: 'MATIC', symbol: 'POL', decimals: 18 },
       rpcUrls: [
-        // ★ あなたの Alchemy URL を先頭に
-        'https://polygon-amoy.g.alchemy.com/v2/wf89gpuUltz8_F74z0hoB', 
+        'https://polygon-amoy.g.alchemy.com/v2/wf89gpuUltz8_F74z0hoB',
         'https://rpc-amoy.polygon.technology',
-        'https://rpc.ankr.com/polygon_amoy',
+        'https://rpc.ankr.com/polygon_amoy'
       ],
       blockExplorerUrls: ['https://amoy.polygonscan.com']
     };
@@ -186,7 +245,7 @@
 
     const btnConnect = document.querySelector('#btnConnect');
     const btnAuto = document.querySelector('#btnAuto');
-    the btnApproveOnly = document.querySelector('#btnApproveOnly');
+    const btnApproveOnly = document.querySelector('#btnApproveOnly');
     const btnBuyOnly = document.querySelector('#btnBuyOnly');
     const btnRefresh = document.querySelector('#btnRefresh');
 
@@ -338,13 +397,12 @@
           const missing = need - allowance;
           log(`approve required: ${formatUnits(missing, DECIMALS)} LG`, 'warn');
 
-          // ここを BigInt -> string に変換
           const tx = await tokenWrite().approve(SALE_ADDRESS, missing.toString());
           log(`approve tx sent: ${tx.hash}`);
           const receipt = await tx.wait(1);
           log(`approve confirmed in block ${receipt.blockNumber}`, 'ok');
 
-          // 反映待ち
+          // 少し待って allowance 再取得
           await new Promise(res => setTimeout(res, 1200));
           allowance = await fetchAllowance(userAddress, SALE_ADDRESS);
           log(`allowance updated: ${formatUnits(allowance, DECIMALS)} LG`);
@@ -387,18 +445,17 @@
         const allowance = await fetchAllowance(userAddress, SALE_ADDRESS);
         const missing = allowance >= need ? 0n : (need - allowance);
         if (missing === 0n) {
-          log('approveは不要です', 'ok'); 
+          log('approveは不要です', 'ok');
           return;
         }
 
-        // ここも BigInt -> string
         const tx = await tokenWrite().approve(SALE_ADDRESS, missing.toString());
         log(`approve tx: ${tx.hash}`);
         await tx.wait(1);
         log('approve confirmed', 'ok');
         await refreshUI();
-      } catch (e) { 
-        log(`approveOnly error: ${e.message||e}`, 'ng'); 
+      } catch (e) {
+        log(`approveOnly error: ${e.message||e}`, 'ng');
       }
     }
 
@@ -411,15 +468,18 @@
         await tx.wait(1);
         log('buy confirmed', 'ok');
         await refreshUI();
-      } catch (e) { 
-        log(`buyOnly error: ${e.message||e}`, 'ng'); 
+      } catch (e) {
+        log(`buyOnly error: ${e.message||e}`, 'ng');
       }
     }
 
     /**********************
      * イベント
      **********************/
-    btnConnect.onclick = async () => { await ensureWallet(); await refreshUI(); };
+    btnConnect.onclick = async () => {
+      await ensureWallet();
+      await refreshUI();
+    };
     btnRefresh.onclick = refreshUI;
     btnAuto.onclick = autoBuy;
     btnApproveOnly.onclick = approveOnly;
