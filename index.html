@@ -22,6 +22,60 @@
     .ok{color:#22c55e} .ng{color:#f43f5e} .warn{color:#f59e0b}
     .sep{height:1px; background:#222; margin:16px 0}
     a{color:#7dd3fc}
+    /* ---- モバイル最適化 ---- */
+@media (max-width: 480px) {
+  .card {
+    padding:16px;
+    border-radius:10px;
+  }
+
+  .row {
+    flex-direction: column;
+    align-items: stretch;
+    gap:8px;
+  }
+
+  .row button {
+    width:100%;
+    text-align:center;
+  }
+
+  .pill {
+    width:100%;
+    justify-content:center;
+    font-size:12px;
+    padding:6px 8px;
+    text-align:center;
+  }
+
+  .grid {
+    grid-template-columns: 1fr; /* 2列→1列に */
+    gap:10px;
+  }
+
+  label {
+    display:block;
+    font-size:14px;
+  }
+
+  input {
+    width:100%;
+    min-width:0;
+    font-size:16px; /* スマホでタップしやすいように */
+  }
+
+  #log {
+    min-height:140px;
+    font-size:12px;
+  }
+
+  button.primary,
+  button.ghost {
+    font-size:14px;
+    padding:12px;
+  }
+}
+
   </style>
 </head>
 <body>
