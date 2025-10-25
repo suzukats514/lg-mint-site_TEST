@@ -536,36 +536,71 @@
      * - approve は絶対に呼ばない
      ********************************************************/
     async function doMintPure(){
-      try{
-        await ensureWallet();
+  try{
+    await ensureWallet();
 
-        const qtyVal = Math.max(1, parseInt($qty.value||'1',10));
+    const qtyVal = Math.max(1, parseInt($qty.value||'1',10));
 
-        pushLog('sending buyQty...');
-        const tx = await saleWrite().buyQty(qtyVal);
-        pushLog(`mint tx sent: ${tx.hash}`);
+    pushLog('sending buyQty...');
+    const tx = await saleWrite().buyQty(qtyVal);
+    pushLog(`mint tx sent: ${tx.hash}`);
 
-        const rc = await tx.wait(1);
-        ok(`mint confirmed in block ${rc.blockNumber}`);
-        alert('購入完了！ウォレットのNFTを確認してください。');
+    const rc = await tx.wait(1);
+    ok(`mint confirmed in block ${rc.blockNumber}`);
+    alert('購入完了！ウォレットのNFTを確認してください。');
 
-        await refreshUI();
-      }catch(e){
-        const raw = (e?.info?.error?.message) || e?.shortMessage || e?.message || String(e);
+    await refreshUI();
 
-        if(/allowance/i.test(raw) || /insufficient allowance/i.test(raw)){
-          errLog('Allowance不足: まず「① Approve LG Token」を押して許可を出してください。');
-        }else if(/insufficient funds/i.test(raw.toLowerCase())){
-          errLog('ガス(POL)またはLG残高が不足しています。');
-        }else if(/user rejected/i.test(raw.toLowerCase())){
-          warn('ウォレットでキャンセルされました。');
-        }else if(/-32603/.test(raw) || /Internal JSON-RPC error/i.test(raw)){
-          errLog('MintがRPCに拒否されました (-32603)。許可額や直前のトランザクション状態が原因の可能性があります。① Approve をもう一度実行してから再度お試しください。');
-        }else{
-          errLog(`mint error: ${raw}`);
-        }
-      }
+  } catch(e){
+    const raw = (e?.info?.error?.message) || e?.shortMessage || e?.message || String(e);
+    const lower = raw.toLowerCase();
+
+    if (lower.includes('user denied') || lower.includes('user rejected')) {
+      // ユーザーがMetaMaskで拒否
+      warn(
+        'ミントは中止されました：ウォレット側で「拒否」が選ばれました。' + '\n' +
+        '購入を続けたい場合は、もう一度「② Mint NFT」を押して、ウォレットで承認してください。'
+      );
+
+    } else if (lower.includes('insufficient funds')) {
+      // ガス or 残高
+      errLog(
+        'ミント失敗：必要な残高が足りません。' + '\n' +
+        '・POL(MATIC)のガス代が不足しているか、' + '\n' +
+        '・LGトークンの残高が不足しています。' + '\n' +
+        'ウォレット残高を確認してください。'
+      );
+
+    } else if (lower.includes('allowance')) {
+      // Allowance不足パターン
+      errLog(
+        'ミント失敗：支払い許可(Allowance)が足りません。' + '\n\n' +
+        '▶ 対処方法：' + '\n' +
+        '1. 「① Approve LG Token」を押してウォレットで承認する' + '\n' +
+        '2. その後に「② Mint NFT」を押す'
+      );
+
+    } else if (lower.includes('-32603') || lower.includes('internal json-rpc error') || lower.includes('could not coalesce error')) {
+      // いちばんよく見るやつ
+      errLog(
+        'ミントが拒否されました (-32603)。' + '\n' +
+        'ネットワーク側が「この取引は今すぐは成立しない」と判断しています。' + '\n\n' +
+        'よくある原因：' + '\n' +
+        '・前のトランザクションがまだ確定していない' + '\n' +
+        '・Allowanceがギリギリで不足扱いになっている' + '\n\n' +
+        '▶ 対処方法：' + '\n' +
+        '1. まず「① Approve LG Token」をもう一度押して承認する' + '\n' +
+        '2. それから再び「② Mint NFT」を押す' + '\n' +
+        '（承認がエラーになる場合でも、すでに許可が残っていればMintできることがあります）'
+      );
+
+    } else {
+      // 想定外
+      errLog(`Mintエラー（詳細）：${raw}`);
     }
+  }
+}
+
 
     /********************************************************
      * wire up events
