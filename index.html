@@ -73,13 +73,13 @@
 
   <!-- Ethers v6 -->
   <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.2/dist/ethers.umd.min.js"></script>
-<!-- もしCDNがブロックされる場合はこっち -->
-<!-- <script src="https://unpkg.com/ethers@6.13.2/dist/ethers.umd.min.js"></script> -->
+  <!-- <script src="https://unpkg.com/ethers@6.13.2/dist/ethers.umd.min.js"></script> -->
+
   <script type="module">
-    const { BrowserProvider, JsonRpcProvider, Contract, formatUnits, parseUnits, toNumber } = ethers;
+    const { BrowserProvider, JsonRpcProvider, Contract, formatUnits } = ethers;
 
     /**********************
-     * ★ ここを書き換える
+     * ★ ネットワーク設定
      **********************/
     // Polygon Amoy (chainId 80002)
     const CHAIN_ID = 80002;
@@ -96,10 +96,10 @@
       blockExplorerUrls: ['https://amoy.polygonscan.com']
     };
 
-    // ★ あなたのコントラクト
+    // ★ コントラクト
     const SALE_ADDRESS   = '0x4CD52DC71DaeB382cD736eCd2d9a821192A914dE'; // PlayerSaleERC20_MintLevel1
     const TOKEN_ADDRESS  = '0xf5E7662fD4031Eb4Dad19DA8961E01A5d9F90F46'; // LG(ERC20)
-    const DECIMALS       = 18;  // LG の decimals（18が一般的）
+    const DECIMALS       = 18;  // LG decimals
 
     /**********************
      * ABI（最小限）
@@ -131,7 +131,7 @@
 
     const btnConnect = document.querySelector('#btnConnect');
     const btnAuto = document.querySelector('#btnAuto');
-    const btnApproveOnly = document.querySelector('#btnApproveOnly');
+    the btnApproveOnly = document.querySelector('#btnApproveOnly');
     const btnBuyOnly = document.querySelector('#btnBuyOnly');
     const btnRefresh = document.querySelector('#btnRefresh');
 
@@ -282,10 +282,13 @@
         if (allowance < need) {
           const missing = need - allowance;
           log(`approve required: ${formatUnits(missing, DECIMALS)} LG`, 'warn');
-          const tx = await tokenWrite().approve(SALE_ADDRESS, missing);
+
+          // ここを BigInt -> string に変換
+          const tx = await tokenWrite().approve(SALE_ADDRESS, missing.toString());
           log(`approve tx sent: ${tx.hash}`);
           const receipt = await tx.wait(1);
           log(`approve confirmed in block ${receipt.blockNumber}`, 'ok');
+
           // 反映待ち
           await new Promise(res => setTimeout(res, 1200));
           allowance = await fetchAllowance(userAddress, SALE_ADDRESS);
@@ -329,15 +332,21 @@
         const allowance = await fetchAllowance(userAddress, SALE_ADDRESS);
         const missing = allowance >= need ? 0n : (need - allowance);
         if (missing === 0n) {
-          log('approveは不要です', 'ok'); return;
+          log('approveは不要です', 'ok'); 
+          return;
         }
-        const tx = await tokenWrite().approve(SALE_ADDRESS, missing);
+
+        // ここも BigInt -> string
+        const tx = await tokenWrite().approve(SALE_ADDRESS, missing.toString());
         log(`approve tx: ${tx.hash}`);
         await tx.wait(1);
         log('approve confirmed', 'ok');
         await refreshUI();
-      } catch (e) { log(`approveOnly error: ${e.message||e}`, 'ng'); }
+      } catch (e) { 
+        log(`approveOnly error: ${e.message||e}`, 'ng'); 
+      }
     }
+
     async function buyOnly() {
       try {
         await ensureWallet();
@@ -347,7 +356,9 @@
         await tx.wait(1);
         log('buy confirmed', 'ok');
         await refreshUI();
-      } catch (e) { log(`buyOnly error: ${e.message||e}`, 'ng'); }
+      } catch (e) { 
+        log(`buyOnly error: ${e.message||e}`, 'ng'); 
+      }
     }
 
     /**********************
